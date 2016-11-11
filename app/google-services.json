@@ -1,0 +1,42 @@
+{
+  "project_info": {
+    "project_number": "606892928679",
+    "firebase_url": "https://pushcontextflybits.firebaseio.com",
+    "project_id": "pushcontextflybits",
+    "storage_bucket": "pushcontextflybits.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:606892928679:android:89f5c25a489d276a",
+        "android_client_info": {
+          "package_name": "bosch.mx.lud1ga.pushcontextflybits"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "606892928679-fgpv2lu65a7nq1d9rbjj67aavn9ifmgp.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDUck5FEpVu8-lQpjc4-Zmaaq7kq8Sx9Gc"
+        }
+      ],
+      "services": {
+        "analytics_service": {
+          "status": 1
+        },
+        "appinvite_service": {
+          "status": 1,
+          "other_platform_oauth_client": []
+        },
+        "ads_service": {
+          "status": 2
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
