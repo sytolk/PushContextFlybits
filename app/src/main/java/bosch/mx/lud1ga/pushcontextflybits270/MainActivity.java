@@ -28,6 +28,7 @@ import com.flybits.core.api.context.v2.ContextManager;
 import com.flybits.core.api.context.v2.ContextPriority;
 import com.flybits.core.api.context.v2.plugins.FlybitsContextPlugin;
 import com.flybits.core.api.context.v2.plugins.battery.BatteryData;
+import com.flybits.core.api.context.v2.plugins.beacon.BeaconActive;
 import com.flybits.core.api.context.v2.plugins.beacon.BeaconDataList;
 import com.flybits.core.api.context.v2.plugins.beacon.BeaconMonitored;
 import com.flybits.core.api.context.v2.plugins.location.LocationData;
@@ -336,7 +337,7 @@ public class MainActivity extends AppCompatActivity {
 
                         if(!subscribed) {
                             for (int i = 0; i < zoneMoments.size(); i++) {
-//                                Flybits.include(MainActivity.this).subscribe(Push.Entity.ZONE_MOMENT, zoneMoments.get(i).id);
+                                Flybits.include(MainActivity.this).subscribe(Push.Entity.ZONE_MOMENT, zoneMoments.get(i).id);
 
                                 Log.i(TAG, "subscribing for zone_moment :: " +
                                         "\n name: " + zoneMoments.get(i).getName()
@@ -552,7 +553,7 @@ public class MainActivity extends AppCompatActivity {
 
         }catch(RuntimeException e){}
 
-        EventBus.getDefault().unregister(this);
+        EventBus.getDefault().unregister(MainActivity.this);
 
         super.onStop();
     }
@@ -600,7 +601,6 @@ public class MainActivity extends AppCompatActivity {
                         ContextManager.include(MainActivity.this).refresh(mPluginNetwork);
 
                     }else if(contextType.equals(AvailablePlugins.BEACON.getKey())){
-
                         BeaconDataList beaconDataList = bundle.getParcelable(CONTEXT_OBJ_KEY);
                         Toast.makeText(MainActivity.this
                                 , "Beacon Plugin :: " + beaconDataList.toString()
@@ -647,10 +647,22 @@ public class MainActivity extends AppCompatActivity {
 //        }
 //    }
 
-    public void onEventMainThread(EventContextSensorValuesUpdated event){
-        Toast.makeText(MainActivity.this, "EventContextSensorValuesUpdated  "+event.toString(), Toast.LENGTH_SHORT).show();
-        Log.i(TAG, event.toString());
+    public void onEventMainThread(EventContextSensorValuesUpdated event) {
+        if (event.pluginIdentifier.equals(AvailablePlugins.BEACON.getKey())) {
+            if (event.contextSensor instanceof BeaconDataList) {
 
+                Type listType = new TypeToken<List<FlybitsBeacon>>() {
+                }.getType();
+                List<FlybitsBeacon> flybitsBeacons = new Gson().fromJson(event.contextSensor.toJson(), listType);
+
+                for (FlybitsBeacon flybitsBeacon : flybitsBeacons) {
+
+                    Log.i(TAG, "EventContextSensorValuesUpdated:: " + flybitsBeacon.toString());
+                }
+
+//                cleanPlugin(event.contextSensor);
+            }
+        }
     }
 
     public void onEventMainThread(EventContextRuleAdded event){

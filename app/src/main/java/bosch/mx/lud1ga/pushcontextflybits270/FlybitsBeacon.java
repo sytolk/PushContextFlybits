@@ -58,4 +58,12 @@ public class FlybitsBeacon {
     public void setInRange(boolean inRange) {
         this.inRange = inRange;
     }
+    @Override
+    public String toString(){
+        return
+                "majorID "+majorId+
+                        " minorID "+minorId+
+                        " UUID "+uuid+
+                        " inRange "+inRange;
+    }
 }
