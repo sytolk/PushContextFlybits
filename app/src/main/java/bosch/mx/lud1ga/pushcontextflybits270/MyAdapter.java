@@ -289,7 +289,7 @@ public class MyAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
                 .skipMemoryCache(true)
                 .into(myViewHolder.image);
 
-        if(zoneMoment.packageName.contains("com.bosch.bnext.moments")){
+        if(zoneMoment.packageName.contains("com.bosch")){
             Log.i(TAG, "ZMI name "+zoneMoment.getName());
             Glide.with(mContext)
                     .load(zoneMoment.getIcon())
@@ -322,12 +322,19 @@ public class MyAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
                         String url = zoneMoment.launchURL
                                 +"?payload="+jwtToken.token;
                         Log.i(TAG, "loading custom moment from Moment Server:: "+url);
-                        if(zoneMoment.packageName.equals("com.bosch.bnext.moments.helloworld")) {
-                            getHelloWorldCMInfo(url, myViewHolder);
-                        }else if(zoneMoment.packageName.equals("com.bosch.bnext.moments.smartparking")) {
-                            getSmartParkingCMInfo(url, myViewHolder);
+                        switch (zoneMoment.packageName){
+                            case "com.bosch.bnext.moments.helloworld":
+                                getHelloWorldCMInfo(url, myViewHolder);
+                                break;
+                            case "com.bosch.bnext.moments.smartparking":
+                                getSmartParkingCMInfo(url, myViewHolder);
+                                break;
+                            case "com.bosch.bulletinboard":
+                                getBulletingBoardCMInfo(url, myViewHolder);
+                                break;
+                            default:
+                                Log.i(TAG, "ZMI package name not found "+zoneMoment.packageName);
                         }
-
                     }
 
                     @Override
@@ -434,4 +441,41 @@ public class MyAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         queue.add(stringRequest);
     }
 
+    private void getBulletingBoardCMInfo(final String url, final MyViewHolder myHolder){
+
+        // Instantiate the RequestQueue.
+        RequestQueue queue = Volley.newRequestQueue(mContext);
+        // Request a string response from the provided URL.
+        StringRequest stringRequest = new StringRequest(Request.Method. GET, url,
+                new Response.Listener<String>() {
+                    @Override
+                    public void onResponse(String response) {
+                        // Display the first 500 characters of the response string.
+                        try {
+                            JSONArray jsonArray = new JSONArray(response);
+                            Log.i(TAG, jsonArray.toString());
+                            String body = jsonArray.toString();
+//                            try {
+//                                body += "Instance Location:: " + jsonObject.getString("location") + "\n";
+//                                body += "Instance building:: " + jsonObject.getString("building") + "\n";
+//                            }catch (JSONException e){
+//                                Log.e(TAG, "Error retrieving JSON", e);
+//                            }
+                            myHolder.body.setText(body);
+                            myHolder.image.setVisibility(View.GONE);
+                        } catch (JSONException e) {
+                            e.printStackTrace();
+                            myHolder.body.setText("error parsing json from custom moment");
+                        }
+                    }
+                }, new Response.ErrorListener() {
+            @Override
+            public void onErrorResponse(VolleyError error) {
+                myHolder.body.setText("That didn't work!");
+                Log.e(TAG, "Error "+url , error);
+            }
+        });
+// Add the request to the RequestQueue.
+        queue.add(stringRequest);
+    }
 }
