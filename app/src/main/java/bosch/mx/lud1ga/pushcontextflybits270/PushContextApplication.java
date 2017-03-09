@@ -20,11 +20,11 @@ public class PushContextApplication extends MultiDexApplication {
 //        languages.add("de");
         FlybitsOptions builder = new FlybitsOptions.Builder(this)
                 //Additional Options Can Be Added Here
-//                .enablePushNotifications(FlybitsOptions.GCMType.WITH_GOOGLE_SERVICES_JSON
-//                        , getString(R.string.app_sender_id), true)
+                .enablePushNotifications(
+                        FlybitsOptions.GCMType.FIREBASE, getString(R.string.app_sender_id),true)
+//                .enablePushNotifications(FlybitsOptions.GCMType.NO_GCM, null)
                 .enableContextUploading(1, ContextPriority.HIGH)
 //                .enableContextRules(1)
-                .enablePushNotifications(FlybitsOptions.GCMType.NO_GCM, null)
 //                .setLocalization(languages)
                 .setDebug(true)
                 .build();

@@ -31,6 +31,7 @@ import com.flybits.core.api.context.v2.plugins.battery.BatteryData;
 import com.flybits.core.api.context.v2.plugins.beacon.BeaconActive;
 import com.flybits.core.api.context.v2.plugins.beacon.BeaconDataList;
 import com.flybits.core.api.context.v2.plugins.beacon.BeaconMonitored;
+import com.flybits.core.api.context.v2.plugins.beacon.BeaconScanningService;
 import com.flybits.core.api.context.v2.plugins.location.LocationData;
 import com.flybits.core.api.context.v2.plugins.network.NetworkData;
 import com.flybits.core.api.events.EventZoneAdd;
@@ -62,6 +63,7 @@ import com.google.gson.reflect.TypeToken;
 
 import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -77,9 +79,10 @@ public class MainActivity extends AppCompatActivity {
     private final int FLEX_TIME_SECS = 5;
 
     private MyAdapter mAdapter;
-    private ArrayList<Zone> mZones = new ArrayList();
+    private ArrayList<Zone> mZones = new ArrayList<>();
     private RecyclerView mRecycler;
     private ProgressBar mProgressBar;
+    public HashMap<String, FlybitsBeacon> mBeacons;
 
 //    Location mOutsideBoschGDLGPS;
 //    Location mInsideBoschGDLGPS;
@@ -351,7 +354,7 @@ public class MainActivity extends AppCompatActivity {
                         }
                         mProgressBar.setVisibility(View.INVISIBLE);
                         requestRules();
-                        getMonitoredBeacons();
+//                        getMonitoredBeacons();
                     }
 
                     @Override
@@ -414,33 +417,33 @@ public class MainActivity extends AppCompatActivity {
 
 //    ArrayList<BeaconMonitored> mBeacons = new ArrayList<>();
 
-    ArrayList<BeaconMonitored> mBeacons = new ArrayList<>();
+//    ArrayList<BeaconMonitored> mBeacons = new ArrayList<>();
 
-    private void getMonitoredBeacons(){
-        Flybits.include(MainActivity.this).getMonitoredBeacons(new IRequestCallback<List<BeaconMonitored>>() {
-            @Override
-            public void onSuccess(List<BeaconMonitored> beaconMonitoreds) {
-                mBeacons = (ArrayList<BeaconMonitored>) beaconMonitoreds;
-            }
-
-            @Override
-            public void onException(Exception e) {
-                Log.e(TAG, "getMonitoredBeacons :: ",e);
-
-            }
-
-            @Override
-            public void onFailed(String s) {
-                Log.e(TAG, "getMonitoredBeacons :: "+s);
-
-            }
-
-            @Override
-            public void onCompleted() {
-
-            }
-        });
-    }
+//    private void getMonitoredBeacons(){
+//        Flybits.include(MainActivity.this).getMonitoredBeacons(new IRequestCallback<List<BeaconMonitored>>() {
+//            @Override
+//            public void onSuccess(List<BeaconMonitored> beaconMonitoreds) {
+//                mBeacons = (ArrayList<BeaconMonitored>) beaconMonitoreds;
+//            }
+//
+//            @Override
+//            public void onException(Exception e) {
+//                Log.e(TAG, "getMonitoredBeacons :: ",e);
+//
+//            }
+//
+//            @Override
+//            public void onFailed(String s) {
+//                Log.e(TAG, "getMonitoredBeacons :: "+s);
+//
+//            }
+//
+//            @Override
+//            public void onCompleted() {
+//
+//            }
+//        });
+//    }
 
     FlybitsContextPlugin mPluginBattery;
     FlybitsContextPlugin mPluginLocation;
@@ -465,6 +468,7 @@ public class MainActivity extends AppCompatActivity {
     private void registerContextUpdates(){
         EventBus.getDefault().register(MainActivity.this);
 
+        mBeacons = new HashMap<>();
 
         Log.i(TAG, "registering everything");
 
@@ -479,6 +483,7 @@ public class MainActivity extends AppCompatActivity {
          * REGISTER FOR CONTEXT CHANGES
          */
         registerReceiver(mReceiver, new IntentFilter("CONTEXT_UPDATED"));
+        registerReceiver(mBeaconReceiver, new IntentFilter(BeaconScanningService.BROADCAST_BEACON_INRANGE));
 
         //Register of Context Updates
         mPluginBattery = new FlybitsContextPlugin.Builder()
@@ -510,7 +515,6 @@ public class MainActivity extends AppCompatActivity {
         ContextManager.include(MainActivity.this).register(mPluginBattery);
         ContextManager.include(MainActivity.this).register(mPluginLocation);
         ContextManager.include(MainActivity.this).register(mBeaconPlugin);
-//        Flybits.include(MainActivity.this).activateContextRules(10);
     }
 
     public void onPause(){
@@ -553,7 +557,7 @@ public class MainActivity extends AppCompatActivity {
         }catch(RuntimeException e){}
 
         EventBus.getDefault().unregister(MainActivity.this);
-
+        unregisterReceiver(mBeaconReceiver);
         super.onStop();
     }
 
@@ -615,6 +619,38 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     };
+
+    private BroadcastReceiver mBeaconReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+
+            Log.i(TAG, "mBeaconReceiver -- onReceive");
+            Bundle bundle = intent.getExtras();
+            BeaconDataList dataList = bundle.getParcelable(BeaconScanningService.BROADCAST_BEACON_PARAM_BEACONS);
+            if(dataList != null){
+                Type listType = new TypeToken<List<FlybitsBeacon>>(){}.getType();
+                List<FlybitsBeacon> flybitsBeacons = new Gson().fromJson(dataList.toJson(), listType);
+
+                for(FlybitsBeacon flybitsBeacon : flybitsBeacons) {
+                    boolean wasInRange = mBeacons.get(flybitsBeacon.getUuid()) != null
+                            && mBeacons.get(flybitsBeacon.getUuid()).isInRange();
+
+                    if (flybitsBeacon.isInRange()) {
+                        Log.i(TAG, "mBeaconReceiver:: " + flybitsBeacon.toString() + " .... NEARBY");
+                    } else if (wasInRange) {
+                        Log.i(TAG, "mBeaconReceiver:: " + flybitsBeacon.toString() + " .... GONE");
+                    } else {
+                        Log.i(TAG, "mBeaconReceiver:: " + flybitsBeacon.toString() + " .... NEITHER");
+                    }
+
+                    mBeacons.put(flybitsBeacon.getUuid(), flybitsBeacon);
+
+                    Log.i(TAG, "mBeaconReceiver :: update beacon :: " + flybitsBeacon.toString());
+                }
+            }
+        }
+    };
+
 
 //    private void switchLocations(LocationData locationData){
 //        if(locationData.lat == mInsideBoschGDLGPS.getLatitude()){
