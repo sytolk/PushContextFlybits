@@ -1,37 +1,40 @@
 package bosch.mx.lud1ga.pushcontextflybits270;
 
+import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
-import android.location.Location;
-import android.location.LocationManager;
-import android.location.LocationProvider;
 import android.os.Bundle;
-import android.os.SystemClock;
-import android.support.annotation.MainThread;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
+import android.util.EventLog;
 import android.util.Log;
 import android.view.View;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 
 import com.flybits.core.api.Flybits;
+import com.flybits.core.api.PushManager;
 import com.flybits.core.api.context.v2.AvailablePlugins;
 import com.flybits.core.api.context.v2.BasicData;
 import com.flybits.core.api.context.v2.ContextManager;
 import com.flybits.core.api.context.v2.ContextPriority;
 import com.flybits.core.api.context.v2.plugins.FlybitsContextPlugin;
+import com.flybits.core.api.context.v2.plugins.activity.ActivityData;
 import com.flybits.core.api.context.v2.plugins.battery.BatteryData;
-import com.flybits.core.api.context.v2.plugins.beacon.BeaconActive;
 import com.flybits.core.api.context.v2.plugins.beacon.BeaconDataList;
 import com.flybits.core.api.context.v2.plugins.beacon.BeaconMonitored;
 import com.flybits.core.api.context.v2.plugins.beacon.BeaconScanningService;
+import com.flybits.core.api.context.v2.plugins.carrier.CarrierData;
+import com.flybits.core.api.context.v2.plugins.fitness.FitnessData;
+import com.flybits.core.api.context.v2.plugins.language.LanguageData;
 import com.flybits.core.api.context.v2.plugins.location.LocationData;
 import com.flybits.core.api.context.v2.plugins.network.NetworkData;
 import com.flybits.core.api.events.EventZoneAdd;
@@ -58,13 +61,28 @@ import com.flybits.core.api.models.ZoneMoment;
 import com.flybits.core.api.utils.filters.LoginOptions;
 import com.flybits.core.api.utils.filters.ZoneMomentOptions;
 import com.flybits.core.api.utils.filters.ZoneOptions;
+import com.google.android.gms.awareness.Awareness;
+import com.google.android.gms.awareness.fence.AwarenessFence;
+import com.google.android.gms.awareness.fence.DetectedActivityFence;
+import com.google.android.gms.awareness.fence.FenceUpdateRequest;
+import com.google.android.gms.awareness.fence.HeadphoneFence;
+import com.google.android.gms.awareness.state.HeadphoneState;
+import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.common.api.ResultCallback;
+import com.google.android.gms.common.api.ResultCallbacks;
+import com.google.android.gms.common.api.Status;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
 import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import de.greenrobot.event.EventBus;
@@ -75,7 +93,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean isLoggedIn = false;
     private String TAG = getClass().getSimpleName();
 
-    private final int INTERVAL_SECS = 30;
+    private final int INTERVAL_SECS = 10;
     private final int FLEX_TIME_SECS = 5;
 
     private MyAdapter mAdapter;
@@ -83,12 +101,9 @@ public class MainActivity extends AppCompatActivity {
     private RecyclerView mRecycler;
     private ProgressBar mProgressBar;
     public HashMap<String, FlybitsBeacon> mBeacons;
+    ArrayList<BeaconMonitored> monitoredBeacons = new ArrayList<>();
 
-//    Location mOutsideBoschGDLGPS;
-//    Location mInsideBoschGDLGPS;
-//    Location mOutsideBoschGDLNetwork;
-//    Location mInsideBoschGDLNetwork;
-//    LocationManager mLocationManager;
+    GoogleApiClient googleApiClient;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -105,8 +120,88 @@ public class MainActivity extends AppCompatActivity {
         mRecycler.setLayoutManager(new LinearLayoutManager(getApplicationContext()));
         mRecycler.setAdapter(mAdapter);
 
-//        setMockLocation();
+    }
 
+    private PendingIntent myPendingIntent;
+    private MyFenceReceiver myFenceReceiver;
+    public static String FENCE_RECEIVER_ACTION = "MainActivity::Receiver::ActivityFence";
+
+    private void startGoogleServices(){
+        Intent intent = new Intent(FENCE_RECEIVER_ACTION);
+        myPendingIntent = PendingIntent.getBroadcast(this, 0, intent, 0);
+        myFenceReceiver = new MyFenceReceiver();
+        registerReceiver(myFenceReceiver, new IntentFilter(FENCE_RECEIVER_ACTION));
+
+        if(googleApiClient == null){
+            googleApiClient = new GoogleApiClient.Builder(getApplicationContext())
+                    .addConnectionCallbacks(new GoogleApiClient.ConnectionCallbacks() {
+                        @Override
+                        public void onConnected(@Nullable Bundle bundle) {
+                            onGoogleServicesConnected();
+                        }
+
+                        @Override
+                        public void onConnectionSuspended(int i) {
+                        }
+                    })
+                    .addApi(Awareness.API).build();
+        }
+        if(!googleApiClient.isConnected()) {
+            googleApiClient.connect();
+        }else{
+            onGoogleServicesConnected();
+        }
+    }
+
+    private void onGoogleServicesConnected(){
+        // Create a fence.
+        AwarenessFence headphoneFence = HeadphoneFence.during(HeadphoneState.PLUGGED_IN);
+        AwarenessFence userDrivingActivityFence = DetectedActivityFence.during(DetectedActivityFence.IN_VEHICLE);
+        AwarenessFence userWalkingActivityFence = DetectedActivityFence.during(DetectedActivityFence.ON_FOOT, DetectedActivityFence.WALKING);
+
+        // Register the fence to receive callbacks.
+        // The fence key uniquely identifies the fence.
+        Awareness.FenceApi.updateFences(
+                googleApiClient,
+                new FenceUpdateRequest.Builder()
+                        .addFence("headphoneFence", headphoneFence, myPendingIntent)
+                        .addFence("userDrivingActivityFence", userDrivingActivityFence, myPendingIntent)
+                        .addFence("userWalkingActivityFence", userWalkingActivityFence, myPendingIntent)
+                        .build())
+                .setResultCallback(new ResultCallback<Status>() {
+                    @Override
+                    public void onResult(@NonNull Status status) {
+                        if (status.isSuccess()) {
+                            Log.i(TAG, "Fence was successfully registered.");
+                        } else {
+                            Log.e(TAG, "Fence could not be registered: " + status);
+                        }
+                    }
+                });
+    }
+
+    private void removeFences(){
+        try {
+            unregisterReceiver(myFenceReceiver);
+        }catch (Exception e){}
+
+        Awareness.FenceApi.updateFences(
+                googleApiClient,
+                new FenceUpdateRequest.Builder()
+                        .removeFence("headphoneFence")
+                        .removeFence("userDrivingActivityFence")
+                        .removeFence("userWalkingActivityFence")
+                        .build()).setResultCallback(new ResultCallbacks<Status>() {
+            @Override
+            public void onSuccess(@NonNull Status status) {
+                Log.i(TAG, "Fences successfully removed.");
+            }
+
+            @Override
+            public void onFailure(@NonNull Status status) {
+                Log.e(TAG, "Fences could NOT be removed.", new Exception(status.getStatusMessage()));
+            }
+        });
     }
 
     private void checkPermissions(){
@@ -275,7 +370,8 @@ public class MainActivity extends AppCompatActivity {
         mProgressBar.setVisibility(View.VISIBLE);
 
         ZoneOptions options = new ZoneOptions.Builder()
-                .addZoneId("E094A8B2-D992-4938-A8A3-A51C558C7F26")//daniel testing zone
+//                .addZoneId("E094A8B2-D992-4938-A8A3-A51C558C7F26")//daniel testing zone
+                .addSearch("test", ZoneOptions.SearchFields.NAME)
                 .build();
         Flybits.include(MainActivity.this).getZones(options,
                 new IRequestPaginationCallback<ArrayList<Zone>>() {
@@ -289,20 +385,20 @@ public class MainActivity extends AppCompatActivity {
                                 mZones.add(zones.get(i));
                                 Flybits.include(MainActivity.this).subscribe(Push.Entity.ZONE, zones.get(i).id);
                                 Log.i(TAG, "subscribing for zone :: " +
-                                        "\n name: " + zones.get(i).getName()
-                                        +"\n description: " + zones.get(i).getDescription()
+                                                "\n name: " + zones.get(i).getName()
+                                                +"\n description: " + zones.get(i).getDescription()
 //                                        +"\n lang codes "+ zones.get(i).getSupportedLanguageCodes().size()
 //                                        + " :" + zones.get(i).getSupportedLanguageCodes()
 //                                        +"\n metadata: " + zones.get(i).metadataAsString
 //                                        +"\n timezone: " + zones.get(i).timezone
 //                                        +"\n color: " + zones.get(i).color
 //                                        +"\n #moments: " + zones.get(i).countZoneMoments
-                                        +"\n #desc: " + zones.get(i).getDescription("de")
+                                                +"\n #desc: " + zones.get(i).getDescription("de")
                                 );
                             }
                         }
 
-                        requestMoments(subscribed);
+                        requestMoments(subscribed, mZones);
                     }
 
                     @Override
@@ -325,10 +421,18 @@ public class MainActivity extends AppCompatActivity {
                 });
     }
 
-    private void requestMoments(final boolean subscribed){
+    private void requestMoments(final boolean subscribed, ArrayList<Zone> mZones){
+        if(mZones == null){
+            mZones = new ArrayList<>();
+        }
+        String[] zones = new String[mZones.size()];
+        for(int i = 0; i < mZones.size(); i++){
+            zones[i] = mZones.get(i).id;
+        }
         ZoneMomentOptions filter = new ZoneMomentOptions.Builder()
-                .addZoneId("E094A8B2-D992-4938-A8A3-A51C558C7F26")
+//                .addZoneId("E094A8B2-D992-4938-A8A3-A51C558C7F26")
 //                .addZoneId("11A98B2C-F8BF-4E21-85BC-099055EA55C6")
+                .addZoneIds(zones)
                 .build();
 
         Flybits.include(MainActivity.this).getZoneMoments(filter
@@ -354,7 +458,7 @@ public class MainActivity extends AppCompatActivity {
                         }
                         mProgressBar.setVisibility(View.INVISIBLE);
                         requestRules();
-//                        getMonitoredBeacons();
+                        getMonitoredBeacons();
                     }
 
                     @Override
@@ -389,7 +493,7 @@ public class MainActivity extends AppCompatActivity {
                 Log.i(TAG, "getRules :: onSuccess :: "+rules.size());
                 mRules = rules;
                 for(Rule rule : rules){
-                    Log.i(TAG, "rule :: "+rule.dataAsString);
+                    Log.i(TAG, "rule :: "+rule.name+" :: "+rule.dataAsString);
 //                    Flybits.include(MainActivity.this).subscribe(Push.Entity.RULE, rule.id);
                 }
 //                Flybits.include(MainActivity.this).subscribe(Push.Entity.RULE);
@@ -415,40 +519,42 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-//    ArrayList<BeaconMonitored> mBeacons = new ArrayList<>();
+    private void getMonitoredBeacons(){
+        Flybits.include(MainActivity.this).getMonitoredBeacons(new IRequestCallback<List<BeaconMonitored>>() {
+            @Override
+            public void onSuccess(List<BeaconMonitored> beaconMonitored) {
+                monitoredBeacons = (ArrayList<BeaconMonitored>) beaconMonitored;
 
-//    ArrayList<BeaconMonitored> mBeacons = new ArrayList<>();
+                for(BeaconMonitored beacon : monitoredBeacons){
+                    Log.i(TAG, "[[ BEACON MONITORED :: "+beacon.identifier+" :: " +beacon.type+" :: ]]");
+                }
 
-//    private void getMonitoredBeacons(){
-//        Flybits.include(MainActivity.this).getMonitoredBeacons(new IRequestCallback<List<BeaconMonitored>>() {
-//            @Override
-//            public void onSuccess(List<BeaconMonitored> beaconMonitoreds) {
-//                mBeacons = (ArrayList<BeaconMonitored>) beaconMonitoreds;
-//            }
-//
-//            @Override
-//            public void onException(Exception e) {
-//                Log.e(TAG, "getMonitoredBeacons :: ",e);
-//
-//            }
-//
-//            @Override
-//            public void onFailed(String s) {
-//                Log.e(TAG, "getMonitoredBeacons :: "+s);
-//
-//            }
-//
-//            @Override
-//            public void onCompleted() {
-//
-//            }
-//        });
-//    }
+            }
+
+            @Override
+            public void onException(Exception e) {
+                Log.e(TAG, "getMonitoredBeacons :: ",e);
+
+            }
+
+            @Override
+            public void onFailed(String s) {
+                Log.e(TAG, "getMonitoredBeacons :: "+s);
+
+            }
+
+            @Override
+            public void onCompleted() {
+
+            }
+        });
+    }
 
     FlybitsContextPlugin mPluginBattery;
     FlybitsContextPlugin mPluginLocation;
     FlybitsContextPlugin mPluginNetwork;
     FlybitsContextPlugin mBeaconPlugin;
+    FlybitsContextPlugin mActivityPlugin;
 
     @Override
     public void onStart() {
@@ -463,10 +569,14 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onResume(){
         super.onResume();
+        startGoogleServices();
     }
 
     private void registerContextUpdates(){
-        EventBus.getDefault().register(MainActivity.this);
+
+        if(!EventBus.getDefault().isRegistered(MainActivity.this)) {
+            EventBus.getDefault().register(MainActivity.this);
+        }
 
         mBeacons = new HashMap<>();
 
@@ -482,7 +592,7 @@ public class MainActivity extends AppCompatActivity {
         /**
          * REGISTER FOR CONTEXT CHANGES
          */
-        registerReceiver(mReceiver, new IntentFilter("CONTEXT_UPDATED"));
+        registerReceiver(mReceiver, new IntentFilter(PushManager.BROADCAST_CONTEXT_INTENT));
         registerReceiver(mBeaconReceiver, new IntentFilter(BeaconScanningService.BROADCAST_BEACON_INRANGE));
 
         //Register of Context Updates
@@ -511,10 +621,16 @@ public class MainActivity extends AppCompatActivity {
                 )
                 .build();
 
+        mActivityPlugin = new FlybitsContextPlugin.Builder()
+                .setPluginIdentifier(AvailablePlugins.ACTIVITY)
+                .setRefreshTime(1, 1, TimeUnit.SECONDS) //60 = refresh Time, 30 = flexible refresh rate
+                .build();
+
         ContextManager.include(MainActivity.this).register(mPluginNetwork);
         ContextManager.include(MainActivity.this).register(mPluginBattery);
         ContextManager.include(MainActivity.this).register(mPluginLocation);
         ContextManager.include(MainActivity.this).register(mBeaconPlugin);
+        ContextManager.include(MainActivity.this).register(mActivityPlugin);
     }
 
     public void onPause(){
@@ -522,6 +638,13 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void onStop(){
+
+        removeFences();
+
+        if(googleApiClient != null && googleApiClient.isConnected()){
+            googleApiClient.disconnect();
+        }
+
         Log.i(TAG, "Un-registering everything");
         try{
             for(Zone zone : mZones) {
@@ -547,6 +670,9 @@ public class MainActivity extends AppCompatActivity {
         try{
             ContextManager.include(MainActivity.this).unregister(mPluginBattery);
         }catch(Exception e){}
+        try{
+            ContextManager.include(MainActivity.this).unregister(mActivityPlugin);
+        }catch(Exception e){}
 
         try {
             unregisterReceiver(mReceiver);
@@ -557,7 +683,11 @@ public class MainActivity extends AppCompatActivity {
         }catch(RuntimeException e){}
 
         EventBus.getDefault().unregister(MainActivity.this);
-        unregisterReceiver(mBeaconReceiver);
+        try {
+            unregisterReceiver(mBeaconReceiver);
+        }catch(Exception e){
+        }
+
         super.onStop();
     }
 
@@ -568,48 +698,67 @@ public class MainActivity extends AppCompatActivity {
             Log.i(TAG, "onReceive");
             Bundle bundle = intent.getExtras();
 
-            final String CONTEXT_TYPE_KEY = "CONTEXT_TYPE";
-            final String CONTEXT_OBJ_KEY = "CONTEXT_OBJ";
             try {
 
-                if (bundle.containsKey(CONTEXT_TYPE_KEY)) {
-                    String contextType = bundle.getString(CONTEXT_TYPE_KEY);
+                if (bundle.containsKey(PushManager.BROADCAST_CONTEXT_TYPE)) {
+                    String contextType = bundle.getString(PushManager.BROADCAST_CONTEXT_TYPE);
 
                     if (contextType.equals(AvailablePlugins.BATTERY.getKey())) {
-                        BatteryData data = bundle.getParcelable(CONTEXT_OBJ_KEY);
-                        Toast.makeText(MainActivity.this,
-                                "Battery Plugin :: " + data.percentage
-                                        + " .. charging :: " + data.isCharging
-                                , Toast.LENGTH_SHORT).show();
+                        BatteryData data = bundle.getParcelable(PushManager.BROADCAST_CONTEXT_OBJ);
+//                        Toast.makeText(MainActivity.this,
+//                                "Battery Plugin :: " + data.percentage
+//                                        + " .. charging :: " + data.isCharging
+//                                , Toast.LENGTH_SHORT).show();
                         Log.i(TAG, "Battery Plugin :: " + data.toJson());
                         ContextManager.include(MainActivity.this).refresh(mPluginBattery);
 
                     }else if (contextType.equals(AvailablePlugins.LOCATION.getKey())) {
 
-                        LocationData data = bundle.getParcelable(CONTEXT_OBJ_KEY);
-                        Toast.makeText(MainActivity.this
-                                , "Location Plugin :: " + data.toString()
-                                , Toast.LENGTH_SHORT).show();
-//                        Log.i(TAG, "Location Plugin :: " + data.toJson());
+                        LocationData data = bundle.getParcelable(PushManager.BROADCAST_CONTEXT_OBJ);
+//                        Toast.makeText(MainActivity.this
+//                                , "Location Plugin :: " + data.toString() + " speed:"+data.speed
+//                                , Toast.LENGTH_SHORT).show();
+                        Log.i(TAG, "Location Plugin :: " + data.toJson() + " speed:"+data.speed);
                         ContextManager.include(MainActivity.this).refresh(mPluginLocation);
 //                        switchLocations(data);
 
                     }else if (contextType.equals(AvailablePlugins.NETWORK_CONNECTIVITY.getKey())) {
 
-                        NetworkData data = bundle.getParcelable(CONTEXT_OBJ_KEY);
-                        Toast.makeText(MainActivity.this
-                                , "Network Plugin :: " + data.ssid
-                                , Toast.LENGTH_SHORT).show();
+                        NetworkData data = bundle.getParcelable(PushManager.BROADCAST_CONTEXT_OBJ);
+//                        Toast.makeText(MainActivity.this
+//                                , "Network Plugin :: " + data.ssid
+//                                , Toast.LENGTH_SHORT).show();
                         Log.i(TAG, "Network Plugin :: " + data.toJson());
                         ContextManager.include(MainActivity.this).refresh(mPluginNetwork);
 
                     }else if(contextType.equals(AvailablePlugins.BEACON.getKey())){
-                        BeaconDataList beaconDataList = bundle.getParcelable(CONTEXT_OBJ_KEY);
-                        Toast.makeText(MainActivity.this
-                                , "Beacon Plugin :: " + beaconDataList.toString()
-                                , Toast.LENGTH_SHORT).show();
+                        BeaconDataList beaconDataList = bundle.getParcelable(PushManager.BROADCAST_CONTEXT_OBJ);
+//                        Toast.makeText(MainActivity.this
+//                                , "Beacon Plugin :: " + beaconDataList.toString()
+//                                , Toast.LENGTH_SHORT).show();
                         Log.i(TAG, "Beacon Plugin :: " + beaconDataList.toJson());
 
+                    }else if(contextType.equals(AvailablePlugins.ACTIVITY.getKey())){
+                        ActivityData activityData = bundle.getParcelable(PushManager.BROADCAST_CONTEXT_OBJ);
+                        parseActivityData(activityData);
+//                        Toast.makeText(MainActivity.this
+//                                , "Beacon Plugin :: " + activityData.toString()
+//                                , Toast.LENGTH_SHORT).show();
+                    }else if(contextType.equals(AvailablePlugins.FITNESS.getKey())){
+                        FitnessData fitnessData = bundle.getParcelable(PushManager.BROADCAST_CONTEXT_OBJ);
+//                        Toast.makeText(MainActivity.this
+//                                , "Fitness Plugin :: " + fitnessData.toString()
+//                                , Toast.LENGTH_SHORT).show();
+                    }else if(contextType.equals(AvailablePlugins.LANGUAGE.getKey())){
+                        LanguageData languageData = bundle.getParcelable(PushManager.BROADCAST_CONTEXT_OBJ);
+//                        Toast.makeText(MainActivity.this
+//                                , "Language Plugin :: " + languageData.toString()
+//                                , Toast.LENGTH_SHORT).show();
+                    }else if(contextType.equals(AvailablePlugins.CARRIER.getKey())){
+                        CarrierData carrierData = bundle.getParcelable(PushManager.BROADCAST_CONTEXT_OBJ);
+//                        Toast.makeText(MainActivity.this
+//                                , "Carrier Plugin :: " + carrierData.toString()
+//                                , Toast.LENGTH_SHORT).show();
                     }
 
                     Log.i(TAG, bundle.toString());
@@ -642,7 +791,9 @@ public class MainActivity extends AppCompatActivity {
                     } else {
                         Log.i(TAG, "mBeaconReceiver:: " + flybitsBeacon.toString() + " .... NEITHER");
                     }
-
+                    Toast.makeText(MainActivity.this
+                            , "mBeaconReceiver :: " + flybitsBeacon.toString()
+                            , Toast.LENGTH_SHORT).show();
                     mBeacons.put(flybitsBeacon.getUuid(), flybitsBeacon);
 
                     Log.i(TAG, "mBeaconReceiver :: update beacon :: " + flybitsBeacon.toString());
@@ -651,6 +802,29 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
+    private void parseActivityData(ActivityData activityData){
+        if (activityData != null) {
+
+            ArrayList<FlybitsUserActivity> activities = new ArrayList<>();
+            for(Map.Entry<Integer, Integer> activity : activityData.confidenceList.entrySet()){
+                activities.add(new FlybitsUserActivity(ActivityData.ActivityType.fromKey(activity.getKey()), activity.getValue()));
+            }
+
+            Collections.sort(activities, new Comparator<FlybitsUserActivity>() {
+                @Override
+                public int compare(FlybitsUserActivity o1, FlybitsUserActivity o2) {
+                    return o2.getConfidence() - o1.getConfidence();
+                }
+            });
+
+            Log.d("ActivityData", activityData.toString());
+            Log.d("ActivityData", "Running :: "+String.valueOf(activityData.confidenceList.get(ActivityData.ActivityType.RUNNING.getKey())));
+            Log.d("ActivityData", "In Vehicle :: "+String.valueOf(activityData.confidenceList.get(ActivityData.ActivityType.IN_VEHICLE.getKey())));
+            Log.d("ActivityData", "Walking :: "+String.valueOf(activityData.confidenceList.get(ActivityData.ActivityType.WALKING.getKey())));
+            Log.d("ActivityData", "Bicycle :: "+String.valueOf(activityData.confidenceList.get(ActivityData.ActivityType.ON_BICYCLE.getKey())));
+            Log.d("ActivityData", "Still :: "+String.valueOf(activityData.confidenceList.get(ActivityData.ActivityType.STILL.getKey())));
+        }
+    }
 
 //    private void switchLocations(LocationData locationData){
 //        if(locationData.lat == mInsideBoschGDLGPS.getLatitude()){
@@ -697,6 +871,11 @@ public class MainActivity extends AppCompatActivity {
 
 //                cleanPlugin(event.contextSensor);
             }
+        }else if(event.pluginIdentifier.equals(AvailablePlugins.ACTIVITY.getKey())){
+            ActivityData activityData = new Gson().fromJson(event.contextSensor.toJson(), ActivityData.class);
+            Toast.makeText(MainActivity.this
+                    , "Beacon Plugin :: " + activityData.toString()
+                    , Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -731,6 +910,8 @@ public class MainActivity extends AppCompatActivity {
 //        ContextManager.include(MainActivity.this).refresh(mPluginBattery);
 //        ContextManager.include(MainActivity.this).refresh(mPluginLocation);
 //        ContextManager.include(MainActivity.this).refresh(mPluginNetwork);
+
+
 
         BasicData beaconData = Flybits.include(MainActivity.this).getDataForContext(AvailablePlugins.BEACON);
         Log.i(TAG, "BEACON ::: "+beaconData.valueAsString);

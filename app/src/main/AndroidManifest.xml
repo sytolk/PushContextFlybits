@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     package="bosch.mx.lud1ga.pushcontextflybits270">
 
     <!-- Permissions -->
@@ -17,6 +18,8 @@
     <permission android:name="android.permission.ACCESS_FINE_LOCATION" /> <!-- BEACON CONTEXT PERMISSION -->
     <permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
+    <uses-permission android:name="com.google.android.gms.permission.ACTIVITY_RECOGNITION"/>
+
     <!-- BEACON CONTEXT PERMISSION -->
     <application
         android:name=".PushContextApplication"
@@ -24,7 +27,13 @@
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/AppTheme">
+        android:theme="@style/AppTheme"
+        tools:replace="android:icon"
+        >
+        <meta-data
+            android:name="com.google.android.awareness.API_KEY"
+            android:value="AIzaSyDMPM4QZAJ8C6jNMliTgWyCMf8a8OgsmI8"
+            />
         <activity
             android:name=".MainActivity"
             android:screenOrientation="portrait">
@@ -38,14 +47,6 @@
             android:name="com.flybits.apikey"
             android:value="DC8DB88D-7FC3-4CF9-B3F6-C696179AE957" />
 
-        <!--<service-->
-            <!--android:name="com.flybits.core.api.services.gcm.FlybitsGCMTokenListenerService"-->
-            <!--android:exported="false">-->
-            <!--<intent-filter>-->
-                <!--<action android:name="com.google.android.gms.iid.InstanceID" />-->
-            <!--</intent-filter>-->
-        <!--</service>-->
-        <!--<service android:name="com.flybits.core.api.services.gcm.FlybitsGCMRegistrationIntentService" />-->
         <service
             android:name=".services.FlybitsGCMListener"
             android:enabled="true">
@@ -55,18 +56,6 @@
         </service>
         <service android:name="com.flybits.core.api.services.PushService" />
 
-        <!--<receiver-->
-            <!--android:name="com.google.android.gms.gcm.GcmReceiver"-->
-            <!--android:exported="true"-->
-            <!--android:permission="com.google.android.c2dm.permission.SEND">-->
-            <!--<intent-filter>-->
-                <!--<action android:name="com.google.android.c2dm.intent.RECEIVE" />-->
-
-                <!--<category android:name="bosch.mx.lud1ga.pushcontextflybits270" />-->
-            <!--</intent-filter>-->
-        <!--</receiver>-->
-
-        <!-- <service android:name="com.flybits.core.api.context.v2.plugins.network.NetworkBackgroundService" -->
         <service
             android:name="com.flybits.core.api.context.v2.plugins.network.NetworkContextPluginService"
             android:exported="true"
@@ -76,7 +65,6 @@
             </intent-filter>
         </service>
 
-        <!-- <service android:name="com.flybits.core.api.context.v2.plugins.battery.BatteryBackgroundService" -->
         <service
             android:name="com.flybits.core.api.context.v2.plugins.battery.BatteryContextPluginService"
             android:exported="true"
@@ -90,8 +78,6 @@
 
         <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" /> <!-- BEACON CONTEXT PERMISSION -->
 
-
-        <!-- <service android:name="com.flybits.core.api.context.v2.plugins.location.LocationBackgroundService" -->
         <service
             android:name="com.flybits.core.api.context.v2.plugins.location.LocationContextPluginService"
             android:exported="true"
@@ -117,13 +103,15 @@
             </intent-filter>
         </service>
 
-        <!-- <service android:name="com.flybits.core.api.context.v2.plugins.beacon.BeaconContextBackgroundService" -->
-        <!-- android:permission="com.google.android.gms.permission.BIND_NETWORK_TASK_SERVICE" -->
-        <!-- android:exported="true"> -->
-        <!-- <intent-filter> -->
-        <!-- <action android:name="com.google.android.gms.gcm.ACTION_TASK_READY"/> -->
-        <!-- </intent-filter> -->
-        <!-- </service> -->
+        <!-- *************** Activity recognition *************** -->
+        <service android:name="com.flybits.core.api.context.v2.plugins.activity.ActivityContextPluginService"
+            android:permission="com.google.android.gms.permission.BIND_NETWORK_TASK_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.gcm.ACTION_TASK_READY"/>
+            </intent-filter>
+        </service>
+        <service android:name="com.flybits.core.api.context.v2.plugins.activity.DeviceRecognitionServiceIntent" />
 
         <service
             android:name="com.flybits.core.api.context.v2.plugins.beacon.BeaconScanningService"
