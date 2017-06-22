@@ -371,7 +371,8 @@ public class MainActivity extends AppCompatActivity {
 
         ZoneOptions options = new ZoneOptions.Builder()
 //                .addZoneId("E094A8B2-D992-4938-A8A3-A51C558C7F26")//daniel testing zone
-                .addSearch("test", ZoneOptions.SearchFields.NAME)
+//                .addSearch("test", ZoneOptions.SearchFields.NAME)
+                .includeOnlyPublishedZones(true)
                 .build();
         Flybits.include(MainActivity.this).getZones(options,
                 new IRequestPaginationCallback<ArrayList<Zone>>() {
@@ -695,7 +696,7 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onReceive(Context context, Intent intent) {
 
-            Log.i(TAG, "onReceive");
+            Log.i(TAG, "OFFLINE_TEST onReceive");
             Bundle bundle = intent.getExtras();
 
             try {
@@ -736,7 +737,7 @@ public class MainActivity extends AppCompatActivity {
 //                        Toast.makeText(MainActivity.this
 //                                , "Beacon Plugin :: " + beaconDataList.toString()
 //                                , Toast.LENGTH_SHORT).show();
-                        Log.i(TAG, "Beacon Plugin :: " + beaconDataList.toJson());
+                        Log.i(TAG, "OFFLINE_TEST Beacon Plugin :: " + beaconDataList.toJson());
 
                     }else if(contextType.equals(AvailablePlugins.ACTIVITY.getKey())){
                         ActivityData activityData = bundle.getParcelable(PushManager.BROADCAST_CONTEXT_OBJ);
@@ -773,7 +774,7 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onReceive(Context context, Intent intent) {
 
-            Log.i(TAG, "mBeaconReceiver -- onReceive");
+            Log.i(TAG, "OFFLINE_TEST mBeaconReceiver -- onReceive");
             Bundle bundle = intent.getExtras();
             BeaconDataList dataList = bundle.getParcelable(BeaconScanningService.BROADCAST_BEACON_PARAM_BEACONS);
             if(dataList != null){
@@ -785,18 +786,18 @@ public class MainActivity extends AppCompatActivity {
                             && mBeacons.get(flybitsBeacon.getUuid()).isInRange();
 
                     if (flybitsBeacon.isInRange()) {
-                        Log.i(TAG, "mBeaconReceiver:: " + flybitsBeacon.toString() + " .... NEARBY");
+                        Log.i(TAG, "OFFLINE_TEST mBeaconReceiver:: " + flybitsBeacon.toString() + " .... NEARBY");
                     } else if (wasInRange) {
-                        Log.i(TAG, "mBeaconReceiver:: " + flybitsBeacon.toString() + " .... GONE");
+                        Log.i(TAG, "OFFLINE_TEST mBeaconReceiver:: " + flybitsBeacon.toString() + " .... GONE");
                     } else {
-                        Log.i(TAG, "mBeaconReceiver:: " + flybitsBeacon.toString() + " .... NEITHER");
+                        Log.i(TAG, "OFFLINE_TEST mBeaconReceiver:: " + flybitsBeacon.toString() + " .... NEITHER");
                     }
                     Toast.makeText(MainActivity.this
-                            , "mBeaconReceiver :: " + flybitsBeacon.toString()
+                            , "OFFLINE_TEST mBeaconReceiver :: " + flybitsBeacon.toString()
                             , Toast.LENGTH_SHORT).show();
                     mBeacons.put(flybitsBeacon.getUuid(), flybitsBeacon);
 
-                    Log.i(TAG, "mBeaconReceiver :: update beacon :: " + flybitsBeacon.toString());
+                    Log.i(TAG, "OFFLINE_TEST mBeaconReceiver :: update beacon :: " + flybitsBeacon.toString());
                 }
             }
         }
@@ -818,11 +819,11 @@ public class MainActivity extends AppCompatActivity {
             });
 
             Log.d("ActivityData", activityData.toString());
-            Log.d("ActivityData", "Running :: "+String.valueOf(activityData.confidenceList.get(ActivityData.ActivityType.RUNNING.getKey())));
-            Log.d("ActivityData", "In Vehicle :: "+String.valueOf(activityData.confidenceList.get(ActivityData.ActivityType.IN_VEHICLE.getKey())));
-            Log.d("ActivityData", "Walking :: "+String.valueOf(activityData.confidenceList.get(ActivityData.ActivityType.WALKING.getKey())));
-            Log.d("ActivityData", "Bicycle :: "+String.valueOf(activityData.confidenceList.get(ActivityData.ActivityType.ON_BICYCLE.getKey())));
-            Log.d("ActivityData", "Still :: "+String.valueOf(activityData.confidenceList.get(ActivityData.ActivityType.STILL.getKey())));
+            Log.d("ActivityData", "OFFLINE_TEST Running :: "+String.valueOf(activityData.confidenceList.get(ActivityData.ActivityType.RUNNING.getKey())));
+            Log.d("ActivityData", "OFFLINE_TEST In Vehicle :: "+String.valueOf(activityData.confidenceList.get(ActivityData.ActivityType.IN_VEHICLE.getKey())));
+            Log.d("ActivityData", "OFFLINE_TEST Walking :: "+String.valueOf(activityData.confidenceList.get(ActivityData.ActivityType.WALKING.getKey())));
+            Log.d("ActivityData", "OFFLINE_TEST Bicycle :: "+String.valueOf(activityData.confidenceList.get(ActivityData.ActivityType.ON_BICYCLE.getKey())));
+            Log.d("ActivityData", "OFFLINE_TEST Still :: "+String.valueOf(activityData.confidenceList.get(ActivityData.ActivityType.STILL.getKey())));
         }
     }
 
